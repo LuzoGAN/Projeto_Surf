@@ -2,22 +2,41 @@ import pandas as pd
 import requests
 import flet as ft
 
+
 def main(page: ft.Page):
     page.title = "Previsão do Tempo e Condições Oceânicas"
     page.scroll = "auto"
 
+    # Carregar estados
     r_estado = requests.get("https://servicodados.ibge.gov.br/api/v1/localidades/estados")
     df_estado = pd.DataFrame(r_estado.json()).sort_values(by="nome")
     estados_dict = dict(zip(df_estado["nome"], df_estado["sigla"]))
 
+    # Variáveis de interface
     t_estado = ft.Text()
     t_cidade = ft.Text()
     t_codigo = ft.Text()
     cidade = ft.Dropdown(width=300, options=[])
     cards_container = ft.Column()
-    dialog = ft.AlertDialog(modal=True)
+
+    # Diálogo para condições oceânicas
+    dialog = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Condições Oceânicas"),
+        content=ft.Column([]),
+        actions=[
+            ft.TextButton("Fechar", on_click=lambda e: fechar_dialogo())
+        ]
+    )
+    page.overlay.append(dialog)  # Adiciona o diálogo à sobreposição da página
+
+    # Variáveis de estado
     codigo_cptec = {"valor": None}
     dados_ondas = {"dados": []}
+
+    def fechar_dialogo():
+        dialog.open = False
+        page.update()
 
     def on_estado_change(e):
         estado_nome = estado.value
@@ -86,29 +105,69 @@ def main(page: ft.Page):
         page.update()
 
     def buscar_ondas(codigo):
+        """Busca dados de ondas e reestrutura para acesso mais fácil"""
         r = requests.get(f"https://brasilapi.com.br/api/cptec/v1/ondas/{codigo}/6")
         if r.status_code == 200:
-            dados_ondas["dados"] = r.json().get("ondas", [])
+            dados_brutos = r.json().get("ondas", [])
+
+            # Reestrutura os dados para um formato plano com todas as horas
+            dados_processados = []
+            for dia in dados_brutos:
+                data = dia["data"].split("T")[0]  # Garante formato YYYY-MM-DD
+                #print(data)
+                for hora_dado in dia["dados_ondas"]:
+                    # Junta data e dados horários em um único objeto
+                    registro = {
+                        "data": data,
+                        "hora": hora_dado["hora"],
+                        "vento": hora_dado["vento"],
+                        "direcao_vento_desc": hora_dado["direcao_vento"],
+                        "altura_onda": hora_dado["altura_onda"],
+                        "direcao_onda_desc": hora_dado["direcao_onda_desc"],
+                        "agitacao": hora_dado["agitation"]  # Corrige o nome do campo
+                    }
+                    dados_processados.append(registro)
+
+            dados_ondas["dados"] = dados_processados
+            #print(dados_ondas)
         else:
             dados_ondas["dados"] = []
 
     def mostrar_condicoes_oceanicas(data):
-        ondas_dia = [o for o in dados_ondas["dados"] if o["data"] == data]
+        """Exibe condições oceânicas com verificação robusta de datas"""
+        # Garante formato consistente para comparação
+        data_selecionada = data.split("T")[0] if "T" in data else data
+
+        ondas_dia = [
+            o for o in dados_ondas["dados"]
+            if o["data"] == data_selecionada
+        ]
+
         if not ondas_dia:
-            dialog.content = ft.Text("Sem dados oceânicos para este dia.")
+            dialog.content = ft.Text("Sem dados oceânicos disponíveis para esta data.")
         else:
-            col = ft.Column(scroll="auto")
+            col = ft.Column(scroll="auto", controls=[
+                ft.Row([
+                    ft.Icon(ft.Icons.WAVES, color=ft.Colors.BLUE_400),
+                    ft.Text("Detalhes por Hora", size=16, weight="bold")
+                ]),
+                ft.Divider()
+            ])
             for o in ondas_dia:
-                col.controls.append(ft.Text(f"🕒 {o['hora']}"))
-                col.controls.append(ft.Text(f"💨 Vento: {o['vento']} km/h - {o['direcao_vento_desc']}"))
-                col.controls.append(ft.Text(f"🌊 Altura da Onda: {o['altura_onda']} m - {o['direcao_onda_desc']}"))
-                col.controls.append(ft.Text(f"🌊 Agitação: {o['agitacao']}"))
-                col.controls.append(ft.Divider())
+                col.controls.extend([
+                    ft.Text(f"🕒 {o.get('hora', 'N/A')}"),
+                    ft.Text(f"🌬️ Vento: {o.get('vento', 'N/A')} km/h - {o.get('direcao_vento_desc', 'N/A')}"),
+                    ft.Text(f"🌊 Altura: {o.get('altura_onda', 'N/A')} m - {o.get('direcao_onda_desc', 'N/A')}"),
+                    ft.Text(f"🌀 Agitação: {o.get('agitacao', 'N/A')}"),
+                    ft.Divider()
+                ])
             dialog.content = col
-        page.dialog = dialog
+
         dialog.open = True
+        page.dialog = dialog  # ✅ Método correto para exibir diálogos no Flet
         page.update()
 
+    # Dropdown de estados
     estado = ft.Dropdown(
         width=300,
         label="Selecione um estado",
@@ -116,9 +175,11 @@ def main(page: ft.Page):
         on_change=on_estado_change
     )
 
+    # Eventos dos componentes
     cidade.on_change = on_cidade_change
     botao_buscar = ft.ElevatedButton(text="Buscar Previsão do Tempo", on_click=buscar_codigo_cptec)
 
+    # Layout da página
     page.add(
         estado,
         t_estado,
@@ -131,4 +192,6 @@ def main(page: ft.Page):
         cards_container
     )
 
+
+# Executa o app
 ft.app(target=main)
