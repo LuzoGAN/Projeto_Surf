@@ -30,7 +30,7 @@ Execute o aplicativo com o seguinte comando:
 A interface será aberta automaticamente em uma janela do navegador ou como uma aplicação nativa, dependendo da configuração do Flet.
 
 📸 Capturas de Tela
-![image](https://github.com/user-attachments/assets/4a7255c2-2850-4ffd-8f7d-970e43aebb7e)
+![image](https://github.com/user-attachments/assets/f6dcf2f4-65f6-4020-ae84-9c4299d433eb)
 
 
 📄 Licença
